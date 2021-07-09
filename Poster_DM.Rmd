@@ -1,0 +1,225 @@
+---
+title: "Data_mining"
+author: "Appanna"
+date: "2/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(reshape2)
+library(GGally)
+library(FactoMineR)
+library(factoextra)
+library(explor)
+```
+
+
+```{r}
+crop_data<-read.csv('FAOSTAT_data_2Feb-7-21_CPVa.csv')
+
+head(crop_data,2) 
+```
+
+#Select only vanilla yield and create factor columns
+```{r}
+crop_data_van <- crop_data[ which(crop_data$Item=='Vanilla'), ]
+#Factorise columns:
+cols=c("Area.Code","Element.Code","Item.Code","Year.Code","Year", "Flag")
+crop_data_van[cols] <- lapply(crop_data_van[cols], factor) 
+dim(crop_data_van)
+```
+#Descriptive stats 
+```{r}
+print(paste0("There are ",dim(crop_data_van)[1]," rows and ",dim(crop_data_van)[2]," columns in the dataset"))
+print(paste0("Number of unique countries are: ", length(unique(crop_data_van$Area))))
+
+gb<-dcast(crop_data_van, formula=Area+Year ~ Element, value.var = 'Value')
+names(gb)<-make.names(names(gb),unique = TRUE)
+#Mean amount of production per country per year in the dataset
+mean_prod<-crop_data_van%>%filter(Element=='Production')%>%summarise(mean(Value,na.rm=TRUE))%>%round()
+
+
+mean_areaharv<-crop_data_van%>%filter(Element=='Area harvested')%>%summarise(mean(Value,na.rm=TRUE))%>%round()
+mean_yield<-crop_data_van%>%filter(Element=='Yield')%>%summarise(mean(Value,na.rm=TRUE))%>%round()
+print(paste0("Mean of production,area harvested, and yield per year per country in the dataset are: ",mean_prod," tonnes, ",mean_areaharv," ha, and ",mean_yield, " hg/ha"))
+```
+
+#Mean of (the sum of global production, area and yield per year), over 10 years:
+```{r}
+gb<-dcast(crop_data_van, formula=Area+Year ~ Element, value.var = 'Value')
+names(gb)<-make.names(names(gb),unique = TRUE)
+
+m_area<-gb %>% group_by(Year)%>%summarise(m_Area=sum(Area.harvested,na.rm=T))%>%summarise(m_Area2=mean(m_Area,na.rm=T))
+m_prod<-gb %>%group_by(Year)%>%summarise(m_prod=sum(Production,na.rm=T))%>%summarise(m_prod2=mean(m_prod,na.rm=T))
+m_yield<-gb %>%group_by(Year)%>%summarise(m_yield=sum(Yield,na.rm=T))%>%summarise(m_yield2=mean(m_yield,na.rm=T))
+print(paste0("Mean of the global sum of production,area harvested, and yield per year in the dataset are: ",m_prod," tonnes, ",m_area," ha, and ",m_yield, " hg/ha"))
+
+
+```
+
+#Percentage of mean production by country
+```{r}
+crop_data_van%>%group_by(Area)%>%summarise(m_prod=mean(Value,na.rm=T))%>%arrange(desc(m_prod))%>%mutate(prop_perc=m_prod/sum(m_prod,na.rm = T))
+```
+
+#Histogram of types of data flags
+* Most of the data is imputed from a linear model 'lm'. This seems to be done to fill the gaps for the yearly data of a country based on official data from the other years. 
+* Only a small percentage of the data is official data.
+```{r}
+crop_data_van%>%ggplot(aes(Flag))+ geom_bar() + 
+  ggtitle('Proportion of data by Flag')
+```
+
+
+#Yield
+China had the best yield in 2010 and it reduced drastically from then. This might indicate that intensive vanilla cultivation stopped.
+
+By 2019 yield was best for Tonga and Kenya,both of whihc had a steady yield. This indicates that the farming practices have remained fairly consistent and are coming from mature vanilla vines.
+```{r}
+crop_data_van_y <- crop_data_van[ which(crop_data_van$Element=='Yield'), ]
+crop_data_van_y %>% group_by(Area,Year)%>%summarise(sum_yield=sum(Value))%>%ggplot(aes(x=reorder(Area,sum_yield), sum_yield, fill=Year)) + geom_bar(stat ='identity',position='stack',binwidth = 0.9, colour = 'black') + coord_flip() + ggtitle('Vanilla yield of past 10 years') + xlab('Countries') + ylab('Yield in hg/ha')
+
+```
+
+
+
+
+# Area harvested 
+Element = area harvested
+* We see that mainland China has the sharpest drop in area harvested. This means that many farmers stopped cultivating vanilla after 2010
+* Mexico and Kenya have had the best improvement in area cultivated.
+```{r}
+crop_data_van_ar <- crop_data_van[ which(crop_data_van$Element=='Area harvested'), ]
+
+i=c(16,17,18,16,17,18,16,17,18,16,17,18)
+crop_data_van_y %>% group_by(Area,Year)%>%summarise(sum_area=sum(Value))%>%ggplot(aes(x=Year, y=sum_area, group=Area)) +
+  geom_line(aes(color=Area))+
+  geom_point(aes(shape=Area))+ scale_shape_manual(values = 0:15) + 
+  ggtitle('Vanilla area harvested in past 10 years') + xlab('Year') + ylab('Area in ha')
+
+```
+# Production
+For most countries the produciton has remained fairly constant for the past 10 years.
+However there is maximum fluctuation for Madagascar, Indonesia and mainland China.
+The top producers of vanilla are Madagascar followed by Indonesia
+```{r}
+crop_data_van_pr <- crop_data_van[ which(crop_data_van$Element=='Production'), ]
+
+crop_data_van_pr %>% group_by(Area,Year)%>%summarise(sum_area=sum(Value))%>%ggplot(aes(x=Year, y=sum_area, group=Area)) +
+  geom_line(aes(color=Area))+
+  geom_point(aes(shape=Area))+ scale_shape_manual(values = 0:19) + 
+  ggtitle('Vanilla production in past 10 years') + xlab('Year') + ylab('Production in tonnes')
+```
+
+# Descriptive box plot of country element values across the years
+```{r}
+crop_data_van %>%ggplot(aes(Area, Value, fill=Element)) + geom_boxplot()+ggtitle('Boxplot of days of Sales per month')
+```
+
+#Correlation 
+Separate out new columns for different elements. Unmelt
+```{r}
+m<-dcast(crop_data_van, formula=Area+Year ~ Element, value.var = 'Value')
+m
+```
+#Correlation inferences
+Area harvested and Production have strong positive correlation. 
+Area harvested has a significant negative correlation with Yield. This could probably be due to variability in environmental conditions, maintenance etc in larger areas all of which must be optimal to ensure good production per unit area (yield).
+
+
+```{r}
+
+
+ggpairs(m,
+        columns = c( 'Area harvested','Production','Yield'),
+        title = "",
+        upper = list(continuous="cor",
+                     binwidth=1),
+        lower=list(continuous="smooth",
+                   binwidth=1),
+        switch = "y",
+        axisLabels="none")+
+  ggtitle("Distibution of the variables and pair correlations")
+```
+
+#MCA
+Prepare the dataframe
+```{r}
+crop_data_van$Flag<-sub("^$", "O", crop_data_van$Flag) #Impute missing flag values with 'O' for the official data
+mca_df<-dcast(crop_data_van, formula=Area+Year+Flag ~ Element, value.var = 'Value')
+mca_df
+```
+The target variable to identify is the data 'flag' which indicates what type of data is provided by which countries. 
+
+```{r}
+mca_flag.mca <- MCA(mca_df, quali.sup=1:2, quanti.sup=4:6, ncp=5, graph=T) #specify the additional variables
+```
+We can see that dimension 1 is defined by "Aggregated" data and the dimension 2 is defined official data.
+OFficial data is most associated with Mexico, Indonesia, mainland China and French Polynesia
+Aggregated data is most associated with China.
+Calculated data 'Fc' does not seem to be associated more with specific countries. This is because 'Yield' field has to be calculated for all countries.
+For countries where Area harvested and production has some linear model 'lm' imputed  values, they are also likely to have FAO estimated values 'F'.
+'M' missing values are most associated with Belgium,Seychelle,Fiji and Portugal.
+
+
+ 
+```{r}
+#plot(mca_flag.mca,habillage="quali", invisible=c("ind"), select="contrib 10")
+plot(mca_flag.mca,habillage="quali", invisible=c("ind"))
+```
+
+
+```{r}
+plot(mca_flag.mca,habillage="quali", invisible=c("ind","quali.sup"))
+```
+
+#MCA changing up the target variable. Use "Area" as the target to separate along axes
+Previous one with "Flag" as target is better because it indicates a clearer representation of axes and hence separates the countries in a more interpretable way.
+```{r}
+mca_ar.mca <- MCA(mca_df, quali.sup=2:3, quanti.sup=4:6, ncp=5, graph=T)
+```
+
+
+#Clustering
+For the clustering let us try to define 4 groups based on the flags in the previous MCA.
+- Considering 5 axes and 4 clusters. we get a very close match with our inference in the previous MCA
+```{r}
+mca_flag.mca <- MCA(mca_df, quali.sup=1:2, quanti.sup=4:6, ncp=5, graph=T)
+mca_flag.hcpc <- HCPC(mca_flag.mca,method="ward",nb.clust=6)
+```
+
+
+```{r}
+#6
+mca_flag.hcpc$desc.var$category
+```
+```{r}
+#4
+mca_flag.hcpc$desc.var$category
+```
+
